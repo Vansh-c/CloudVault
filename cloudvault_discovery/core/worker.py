@@ -31,6 +31,7 @@ class WorkerResult:
     owner: Optional[str] = None
     owner_id: Optional[str] = None
     acl_info: Optional[Dict[str, Any]] = None
+    permission_analysis: Optional[Dict[str, Any]] = None
     object_count: Optional[int] = None
     total_size: Optional[int] = None
     sample_objects: List[str] = None
@@ -38,11 +39,13 @@ class WorkerResult:
     source_domain: Optional[str] = None
     check_duration: Optional[float] = None
     error_message: Optional[str] = None
+
     def __post_init__(self):
         if self.sample_objects is None:
             self.sample_objects = []
         if self.interesting_objects is None:
             self.interesting_objects = []
+
     @property
     def is_public(self) -> bool:
         return self.access_level in [
@@ -50,9 +53,37 @@ class WorkerResult:
             AccessLevel.PUBLIC_WRITE,
             AccessLevel.PUBLIC_READ_WRITE
         ]
+
     @property
     def has_interesting_content(self) -> bool:
         return len(self.interesting_objects) > 0
+
+    @property
+    def risk_level(self) -> str:
+        if self.permission_analysis:
+            return self.permission_analysis.get('risk_level', 'LOW')
+        
+        if self.access_level == AccessLevel.PUBLIC_READ_WRITE:
+            return 'CRITICAL'
+        elif self.access_level in [AccessLevel.PUBLIC_READ, AccessLevel.PUBLIC_WRITE]:
+            return 'HIGH'
+        elif self.access_level == AccessLevel.AUTHENTICATED_READ:
+            return 'MEDIUM'
+        else:
+            return 'LOW'
+
+    @property
+    def has_public_write(self) -> bool:
+        if self.permission_analysis:
+            return self.permission_analysis.get('public_write', False)
+        return self.access_level in [AccessLevel.PUBLIC_WRITE, AccessLevel.PUBLIC_READ_WRITE]
+
+    @property
+    def has_public_read(self) -> bool:
+        if self.permission_analysis:
+            return self.permission_analysis.get('public_read', False)
+        return self.access_level in [AccessLevel.PUBLIC_READ, AccessLevel.PUBLIC_READ_WRITE]
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             'bucket_name': self.bucket_name,
@@ -65,13 +96,17 @@ class WorkerResult:
             'owner': self.owner,
             'owner_id': self.owner_id,
             'acl_info': self.acl_info,
+            'permission_analysis': self.permission_analysis,
             'object_count': self.object_count,
             'total_size': self.total_size,
             'sample_objects': self.sample_objects,
             'interesting_objects': self.interesting_objects,
             'source_domain': self.source_domain,
             'check_duration': self.check_duration,
-            'error_message': self.error_message
+            'error_message': self.error_message,
+            'risk_level': self.risk_level,
+            'has_public_write': self.has_public_write,
+            'has_public_read': self.has_public_read
         }
 class BaseWorker(Thread, ABC):
     """
@@ -113,14 +148,25 @@ class BaseWorker(Thread, ABC):
         logger.info(f"Initialized {provider_name} worker")
     def run(self):
         logger.info(f"{self.provider_name} worker started")
+        empty_queue_count = 0
+        max_empty_iterations = 5  # Allow 5 consecutive empty queue checks before terminating
+        
         try:
             while not self.stop_event.is_set():
                 target = self.queue_manager.get_target(
                     self.get_provider_type(), 
-                    timeout=1.0  # 1 second timeout to allow periodic shutdown checks
+                    timeout=1.0
                 )
                 if target is None:
-                    continue  # No target available, continue loop
+                    empty_queue_count += 1
+                    if empty_queue_count >= max_empty_iterations:
+                        # Check if all queues are empty and no work is being processed
+                        if self.queue_manager.is_empty() and self.queue_manager.get_total_queued() == 0:
+                            logger.info(f"{self.provider_name} worker: No more work available, terminating")
+                            break
+                    continue
+                else:
+                    empty_queue_count = 0  # Reset counter when work is found
                 try:
                     start_time = time.time()
                     result = self.check_target(target)
@@ -254,3 +300,24 @@ class UpdateThread(Thread):
     def stop(self):
         logger.info("Stopping update thread...")
         self.stop_event.set()
+    def get_standardized_risk_level(self, access_level: AccessLevel) -> str:
+        if access_level == AccessLevel.PUBLIC_READ_WRITE:
+            return 'CRITICAL'
+        elif access_level == AccessLevel.PUBLIC_READ:
+            return 'HIGH'
+        elif access_level == AccessLevel.AUTHENTICATED_READ:
+            return 'MEDIUM'
+        else:
+            return 'LOW'
+
+    def has_public_write_access(self, access_level: AccessLevel) -> bool:
+        return access_level in [
+            AccessLevel.PUBLIC_READ_WRITE,
+            AccessLevel.PUBLIC_WRITE
+        ]
+
+    def has_public_read_access(self, access_level: AccessLevel) -> bool:
+        return access_level in [
+            AccessLevel.PUBLIC_READ_WRITE,
+            AccessLevel.PUBLIC_READ
+        ]

@@ -17,9 +17,11 @@ from cloudvault_discovery.core.database import DatabaseTester
 
 class TestBasicFunctionality(unittest.TestCase):
     def test_config_loading(self):
-        config = Config("config.yaml")
+        config = Config()
         self.assertIsNotNone(config)
-        self.assertIn("providers", config.config)
+        self.assertIsNotNone(config.aws)
+        self.assertIsNotNone(config.gcp)
+        self.assertIsNotNone(config.azure)
     
     def test_permutation_generator(self):
         gen = PermutationGenerator()
@@ -29,7 +31,9 @@ class TestBasicFunctionality(unittest.TestCase):
     
     def test_bucket_queue_init(self):
         from cloudvault_discovery.core.queue_manager import ProviderType
-        queue = BucketQueue(ProviderType.AWS)
+        from cloudvault_discovery.core.config import Config
+        config = Config()
+        queue = BucketQueue(config)
         self.assertIsNotNone(queue)
     
     def test_providers_init(self):

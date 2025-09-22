@@ -4,7 +4,97 @@ Handles YAML configuration files, environment variables, and provider-specific s
 Provides validation and default values for all configuration options.
 """
 import os
-import yaml
+
+# YAML compatibility shim to handle PyYAML, ruamel.yaml, and JSON fallback
+try:
+    # Try PyYAML first (most common)
+    import yaml
+except ImportError:
+    try:
+        # Try ruamel.yaml with compatibility wrapper
+        import ruamel.yaml
+        
+        class _RuamelYamlShim:
+            def __init__(self):
+                self._yaml = ruamel.yaml.YAML()
+                self._yaml.preserve_quotes = True
+                self._yaml.width = 4096  # Prevent line wrapping
+            
+            def safe_load(self, stream):
+                """Load YAML using ruamel.yaml's safe loader"""
+                try:
+                    return self._yaml.load(stream)
+                except Exception as e:
+                    # Normalize exceptions to match PyYAML behavior
+                    raise yaml.YAMLError(str(e)) if 'yaml' in globals() else Exception(str(e))
+            
+            def dump(self, data, stream=None, default_flow_style=False, indent=2, **kwargs):
+                """Dump YAML using ruamel.yaml with PyYAML-compatible parameters"""
+                try:
+                    # Configure ruamel.yaml to match PyYAML behavior
+                    self._yaml.default_flow_style = default_flow_style
+                    self._yaml.indent(mapping=indent, sequence=indent+2, offset=indent)
+                    
+                    if stream is None:
+                        # Return string if no stream provided
+                        import io
+                        string_stream = io.StringIO()
+                        self._yaml.dump(data, string_stream)
+                        return string_stream.getvalue()
+                    else:
+                        # Write to provided stream
+                        self._yaml.dump(data, stream)
+                        return None
+                except Exception as e:
+                    # Normalize exceptions to match PyYAML behavior
+                    raise yaml.YAMLError(str(e)) if 'yaml' in globals() else Exception(str(e))
+        
+        yaml = _RuamelYamlShim()
+        
+    except ImportError:
+        # Final fallback to JSON if no YAML library available
+        import json
+        
+        class _JsonYamlShim:
+            @staticmethod
+            def safe_load(stream):
+                """Load JSON as YAML fallback"""
+                try:
+                    if hasattr(stream, "read"):
+                        content = stream.read()
+                        if isinstance(content, bytes):
+                            content = content.decode('utf-8')
+                        return json.loads(content) if content.strip() else {}
+                    return json.loads(stream) if stream.strip() else {}
+                except json.JSONDecodeError as e:
+                    raise Exception(f"YAML/JSON parsing error: {e}")
+            
+            @staticmethod
+            def dump(data, stream=None, default_flow_style=False, indent=2, **kwargs):
+                """Dump JSON as YAML fallback"""
+                try:
+                    # Use JSON with YAML-like formatting
+                    json_kwargs = {
+                        'indent': indent,
+                        'separators': (', ', ': ') if not default_flow_style else (',', ':'),
+                        'ensure_ascii': False
+                    }
+                    
+                    if stream is None:
+                        return json.dumps(data, **json_kwargs)
+                    else:
+                        json.dump(data, stream, **json_kwargs)
+                        return None
+                except Exception as e:
+                    raise Exception(f"YAML/JSON serialization error: {e}")
+        
+        yaml = _JsonYamlShim()
+
+# Add YAMLError exception class if not available
+if not hasattr(yaml, 'YAMLError'):
+    class YAMLError(Exception):
+        pass
+    yaml.YAMLError = YAMLError
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, field

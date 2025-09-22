@@ -181,8 +181,66 @@ class CloudVaultDiscovery:
             color = "magenta"
         access_info = f"[{result.access_level.value.upper()}]"
         message = f"Found {result.provider.upper()} bucket: {result.bucket_url} {access_info}"
+        
         if result.owner:
             message += f" (Owner: {result.owner})"
+        
+        # Enhanced Permission Analysis Display
+        if hasattr(result, 'permission_analysis') and result.permission_analysis:
+            perm_analysis = result.permission_analysis
+            permissions = []
+            risk_indicators = []
+            
+            # Collect permission details
+            if perm_analysis.get('public_read'):
+                permissions.append("🌐 PUBLIC_READ")
+            if perm_analysis.get('public_write'):
+                permissions.append("🔓 PUBLIC_WRITE")
+                risk_indicators.append("WRITE_ACCESS")
+            if perm_analysis.get('authenticated_read'):
+                permissions.append("🔐 AUTH_READ")
+            if perm_analysis.get('authenticated_write'):
+                permissions.append("🔑 AUTH_WRITE")
+                risk_indicators.append("AUTH_WRITE")
+            if perm_analysis.get('public_read_acp'):
+                permissions.append("📋 PUBLIC_READ_ACP")
+            if perm_analysis.get('public_write_acp'):
+                permissions.append("⚠️ PUBLIC_WRITE_ACP")
+                risk_indicators.append("ACP_WRITE")
+            
+            # Provider-specific details
+            if result.provider == "azure":
+                if perm_analysis.get('container_access'):
+                    permissions.append("📦 CONTAINER_ACCESS")
+                if perm_analysis.get('blob_access'):
+                    permissions.append("📄 BLOB_ACCESS")
+            elif result.provider == "gcp":
+                if perm_analysis.get('bucket_policy_only'):
+                    permissions.append("🛡️ POLICY_ONLY")
+            
+            if permissions:
+                message += f"\n    └─ Permissions: {' | '.join(permissions)}"
+            
+            # Risk level with context
+            risk_level = perm_analysis.get('risk_level', 'LOW')
+            risk_emoji = {
+                'CRITICAL': '🚨',
+                'HIGH': '🔴', 
+                'MEDIUM': '🟡',
+                'LOW': '🟢'
+            }
+            
+            if risk_level in ['CRITICAL', 'HIGH', 'MEDIUM']:
+                risk_context = ""
+                if 'WRITE_ACCESS' in risk_indicators:
+                    risk_context = " (Public Write Enabled)"
+                elif 'ACP_WRITE' in risk_indicators:
+                    risk_context = " (ACL Modification Allowed)"
+                elif 'AUTH_WRITE' in risk_indicators:
+                    risk_context = " (Authenticated Write Access)"
+                
+                message += f"\n    └─ Risk Level: {risk_emoji.get(risk_level, '❓')} {risk_level}{risk_context}"
+        
         if content_summary and content_summary != "No sensitive content detected":
             message += f" - Contains: {content_summary}"
         if vulnerabilities:
@@ -193,7 +251,7 @@ class CloudVaultDiscovery:
             elif high_count > 0:
                 message += f" ⚠️  {high_count} HIGH risk findings!"
         cprint(message, color, attrs=["bold"])
-        for vuln in vulnerabilities[:3]:  # Show first 3 vulnerabilities
+        for vuln in vulnerabilities[:3]:
             cprint(f"  └─ {vuln.severity}: {vuln.title} - {vuln.evidence}", 
                    "red" if vuln.severity == "CRITICAL" else "yellow")
         if self.config.log_to_file:
@@ -287,9 +345,20 @@ class CloudVaultDiscovery:
                 try:
                     time.sleep(1)
                     if args.source and self.queue_manager.is_empty():
-                        if all(not worker.is_alive() for worker in self.workers):
+                        # Check if all workers have finished their work
+                        active_workers = [w for w in self.workers if w.is_alive()]
+                        if not active_workers:
                             cprint("All work completed!", "green")
                             break
+                        # If workers are still alive but no progress for too long, force shutdown
+                        elif self.queue_manager.get_total_queued() == 0:
+                            # Wait a bit more for workers to finish processing
+                            time.sleep(2)
+                            if self.queue_manager.is_empty() and self.queue_manager.get_total_queued() == 0:
+                                cprint("All work completed - forcing worker shutdown!", "yellow")
+                                for worker in active_workers:
+                                    worker.stop()
+                                break
                 except KeyboardInterrupt:
                     break
         except Exception as e:
@@ -335,24 +404,71 @@ class CloudVaultDiscovery:
         interesting_found = sum(1 for r in self.found_buckets if r.has_interesting_content)
         critical_vulns = sum(1 for v in self.vulnerability_findings if v.severity == "CRITICAL")
         high_vulns = sum(1 for v in self.vulnerability_findings if v.severity == "HIGH")
+        medium_vulns = sum(1 for v in self.vulnerability_findings if v.severity == "MEDIUM")
+        low_vulns = sum(1 for v in self.vulnerability_findings if v.severity == "LOW")
         total_vulns = len(self.vulnerability_findings)
-        cprint("\n=== Final Statistics ===", "cyan", attrs=["bold"])
-        cprint(f"Buckets checked: {total_checked}", "white")
-        cprint(f"Buckets found: {total_found}", "green")
-        cprint(f"Public buckets: {public_found}", "yellow")
-        cprint(f"Interesting buckets: {interesting_found}", "red")
+        
+        # Scan Statistics
+        cprint("\n" + "═" * 70, "cyan")
+        cprint("📊 CLOUDVAULT DISCOVERY - SCAN RESULTS", "cyan", attrs=["bold"])
+        cprint("═" * 70, "cyan")
+        
+        cprint(f"🔍 Targets Scanned:     {total_checked:>8}", "white")
+        cprint(f"✅ Buckets Found:       {total_found:>8}", "green", attrs=["bold"])
+        cprint(f"🌐 Public Access:       {public_found:>8}", "yellow")
+        cprint(f"⚠️  Sensitive Content:   {interesting_found:>8}", "red")
+        
+        # Security Assessment
         if total_vulns > 0:
-            cprint(f"\n=== Security Findings ===", "red", attrs=["bold"])
-            cprint(f"Total vulnerabilities: {total_vulns}", "white")
+            cprint("\n" + "═" * 70, "red")
+            cprint("🛡️  SECURITY THREAT ASSESSMENT", "red", attrs=["bold"])
+            cprint("═" * 70, "red")
+            
+            # Risk Level Breakdown
             if critical_vulns > 0:
-                cprint(f"Critical vulnerabilities: {critical_vulns}", "red", attrs=["bold"])
+                cprint(f"🚨 CRITICAL THREATS:    {critical_vulns:>8} issues", "red", attrs=["bold", "blink"])
             if high_vulns > 0:
-                cprint(f"High-risk findings: {high_vulns}", "yellow")
+                cprint(f"🔴 HIGH RISK:           {high_vulns:>8} issues", "red", attrs=["bold"])
+            if medium_vulns > 0:
+                cprint(f"🟡 MEDIUM RISK:         {medium_vulns:>8} issues", "yellow")
+            if low_vulns > 0:
+                cprint(f"🟢 LOW RISK:            {low_vulns:>8} issues", "green")
+            
+            cprint("─" * 70, "white")
+            
+            # Risk Summary
+            if critical_vulns > 0:
+                cprint("⚡ IMMEDIATE ACTION REQUIRED - Critical vulnerabilities detected!", "red", attrs=["bold", "blink"])
+            elif high_vulns > 0:
+                cprint("⚠️  HIGH PRIORITY - Significant security risks identified!", "yellow", attrs=["bold"])
+            else:
+                cprint("ℹ️  Review recommended for identified security issues", "cyan")
+            
+            # Permission Analysis Summary
+            public_write_buckets = sum(1 for r in self.found_buckets 
+                                     if hasattr(r, 'permission_analysis') and r.permission_analysis 
+                                     and r.permission_analysis.get('public_write', False))
+            public_read_buckets = sum(1 for r in self.found_buckets 
+                                    if hasattr(r, 'permission_analysis') and r.permission_analysis 
+                                    and r.permission_analysis.get('public_read', False))
+            
+            if public_write_buckets > 0 or public_read_buckets > 0:
+                cprint("\n📋 Permission Analysis:", "cyan", attrs=["bold"])
+                if public_write_buckets > 0:
+                    cprint(f"   🔓 Public Write Access: {public_write_buckets} buckets", "red", attrs=["bold"])
+                if public_read_buckets > 0:
+                    cprint(f"   👁️  Public Read Access:  {public_read_buckets} buckets", "yellow")
+            
+            cprint(f"\n📈 Total Security Issues: {total_vulns}", "white", attrs=["bold"])
+            cprint("═" * 70, "red")
+        else:
+            cprint("\n✅ No security vulnerabilities detected in this scan", "green", attrs=["bold"])
+        
+        # Output Files
         if self.found_buckets:
-            cprint(f"\nResults logged to: {self.config.log_file}", "cyan")
+            cprint(f"\n📁 Results saved to: {self.config.log_file}", "cyan")
             if self.vulnerability_findings:
                 vuln_file = self.config.log_file.replace('.log', '_vulnerabilities.log')
-                cprint(f"Vulnerabilities logged to: {vuln_file}", "cyan")
     def _cleanup_stealth_systems(self):
         if not self.stealth_components:
             return
