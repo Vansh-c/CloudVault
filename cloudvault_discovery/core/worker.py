@@ -148,6 +148,9 @@ class BaseWorker(Thread, ABC):
         logger.info(f"Initialized {provider_name} worker")
     def run(self):
         logger.info(f"{self.provider_name} worker started")
+        empty_queue_count = 0
+        max_empty_iterations = 5  # Allow 5 consecutive empty queue checks before terminating
+        
         try:
             while not self.stop_event.is_set():
                 target = self.queue_manager.get_target(
@@ -155,7 +158,15 @@ class BaseWorker(Thread, ABC):
                     timeout=1.0
                 )
                 if target is None:
+                    empty_queue_count += 1
+                    if empty_queue_count >= max_empty_iterations:
+                        # Check if all queues are empty and no work is being processed
+                        if self.queue_manager.is_empty() and self.queue_manager.get_total_queued() == 0:
+                            logger.info(f"{self.provider_name} worker: No more work available, terminating")
+                            break
                     continue
+                else:
+                    empty_queue_count = 0  # Reset counter when work is found
                 try:
                     start_time = time.time()
                     result = self.check_target(target)
