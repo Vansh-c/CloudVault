@@ -47,20 +47,23 @@ class GCPStorageWorker(BaseWorker):
     def _init_http_session(self):
         self.http_session = requests.Session()
         retry_strategy = Retry(
-            total=2,
+            total=3,
             status_forcelist=[429, 500, 502, 503, 504],
             allowed_methods=["HEAD", "GET", "OPTIONS"],
-            backoff_factor=1
+            backoff_factor=2,
+            raise_on_status=False
         )
         adapter = HTTPAdapter(
             max_retries=retry_strategy,
-            pool_connections=10,
-            pool_maxsize=50,
+            pool_connections=15,
+            pool_maxsize=100,
             pool_block=False
         )
         self.http_session.mount("http://", adapter)
         self.http_session.mount("https://", adapter)
-        self.http_session.timeout = self.gcp_config.timeout
+        
+        self.connect_timeout = min(self.gcp_config.timeout // 3, 10)
+        self.read_timeout = self.gcp_config.timeout - self.connect_timeout
     def get_provider_type(self):
         return ProviderType.GCP
     def check_target(self, target) -> WorkerResult:
@@ -88,6 +91,31 @@ class GCPStorageWorker(BaseWorker):
                 result.access_level = self._determine_access_level_from_iam(bucket_metadata)
                 result.region = bucket.location
                 result.acl_info = self._get_bucket_acl_info(bucket)
+                
+                if result.acl_info and 'owner' in result.acl_info:
+                    owner = result.acl_info['owner']
+                    owner_type = result.acl_info.get('owner_type', '')
+                    
+                    if owner and owner != '(unknown)' and owner != '(error)':
+                        if owner_type == 'user':
+                            result.owner = f"User: {owner}"
+                        elif owner_type == 'project':
+                            result.owner = owner
+                        else:
+                            result.owner = owner
+                    else:
+                        result.owner = '(unknown)'
+                else:
+                    result.owner = '(unknown)'
+                
+                result.permission_analysis = self._enhance_gcp_permission_analysis(result.acl_info, bucket_name)
+                
+                if not self._validate_gcp_bucket_access(bucket_name, bucket_url, result.access_level):
+                    logger.debug(f"Bucket {bucket_name} validation failed - marking as false positive")
+                    result.found = False
+                    result.error_message = "Validation failed - possible false positive"
+                    return result
+                
                 if result.is_public or not self.config.only_interesting:
                     try:
                         self._get_bucket_contents(bucket, result)
@@ -95,6 +123,7 @@ class GCPStorageWorker(BaseWorker):
                         logger.debug(f"Error getting bucket contents: {e}")
             except Forbidden:
                 result.access_level = AccessLevel.PRIVATE
+                result.owner = '(access denied)'
                 result.error_message = "Access denied to IAM policy"
             return result
         except Forbidden:
@@ -200,21 +229,147 @@ class GCPStorageWorker(BaseWorker):
             acl_info = {
                 'public_access': [], 
                 'authenticated_access': [],
-                'owner': ''
+                'owner': '',
+                'owner_type': '',
+                'grants': []
             }
+            
+            try:
+                bucket_metadata = bucket.reload()
+                owner_info = getattr(bucket, 'owner', None)
+                if owner_info:
+                    acl_info['owner'] = owner_info
+                    acl_info['owner_type'] = 'project'
+                elif hasattr(bucket, 'project_number'):
+                    acl_info['owner'] = f"Project-{bucket.project_number}"
+                    acl_info['owner_type'] = 'project'
+                else:
+                    acl_info['owner'] = '(unknown)'
+            except Exception as e:
+                logger.debug(f"Error getting bucket owner info: {e}")
+                acl_info['owner'] = '(unknown)'
+            
             for acl in bucket.acl.get():
                 entity = acl.get('entity', '')
                 role = acl.get('role', '')
+                
+                grant_info = {
+                    'entity': entity,
+                    'role': role,
+                    'entity_type': self._determine_entity_type(entity)
+                }
+                acl_info['grants'].append(grant_info)
+                
                 if entity == 'allUsers':
                     acl_info['public_access'].append(role)
                 elif entity == 'allAuthenticatedUsers':
                     acl_info['authenticated_access'].append(role)
-                elif 'OWNER' in role:
-                    acl_info['owner'] = entity
+                elif 'OWNER' in role and not acl_info['owner']:
+                    if entity.startswith('user-'):
+                        acl_info['owner'] = entity.replace('user-', '')
+                        acl_info['owner_type'] = 'user'
+                    elif entity.startswith('project-'):
+                        acl_info['owner'] = entity
+                        acl_info['owner_type'] = 'project'
+                    else:
+                        acl_info['owner'] = entity
+                        acl_info['owner_type'] = 'unknown'
+                        
             return acl_info
         except Exception as e:
             logger.debug(f"Error getting ACLs for {bucket.name}: {e}")
-            return {'error': str(e)}
+            return {'error': str(e), 'owner': '(error)'}
+
+    def _determine_entity_type(self, entity: str) -> str:
+        if entity == 'allUsers':
+            return 'public'
+        elif entity == 'allAuthenticatedUsers':
+            return 'authenticated'
+        elif entity.startswith('user-'):
+            return 'user'
+        elif entity.startswith('group-'):
+            return 'group'
+        elif entity.startswith('domain-'):
+            return 'domain'
+        elif entity.startswith('project-'):
+            return 'project'
+        else:
+            return 'unknown'
+
+    def _enhance_gcp_permission_analysis(self, acl_info: dict, bucket_name: str) -> dict:
+        analysis = {
+            'public_read': False,
+            'public_write': False,
+            'authenticated_read': False,
+            'bucket_policy_only': acl_info.get('bucket_policy_only', False),
+            'risk_level': 'LOW'
+        }
+        
+        grants = acl_info.get('grants', [])
+        for grant in grants:
+            grantee = grant.get('entity', '').lower()
+            permission = grant.get('role', '').upper()
+            
+            if 'allusers' in grantee:
+                if 'READER' in permission:
+                    analysis['public_read'] = True
+                    analysis['risk_level'] = 'HIGH'
+                elif 'WRITER' in permission or 'OWNER' in permission:
+                    analysis['public_write'] = True
+                    analysis['risk_level'] = 'CRITICAL'
+            elif 'allauthenticatedusers' in grantee:
+                analysis['authenticated_read'] = True
+                analysis['risk_level'] = 'MEDIUM'
+        
+        if analysis['bucket_policy_only']:
+            if analysis['risk_level'] == 'HIGH':
+                analysis['risk_level'] = 'MEDIUM'
+            elif analysis['risk_level'] == 'CRITICAL':
+                analysis['risk_level'] = 'HIGH'
+        
+        return analysis
+
+    def _validate_gcp_bucket_access(self, bucket_name: str, bucket_url: str, access_level) -> bool:
+        try:
+            if hasattr(access_level, 'name') and 'PUBLIC' in access_level.name:
+                response = self.http_session.head(bucket_url, timeout=self.gcp_config.timeout)
+                if response.status_code in [200, 403]:
+                    return True
+                elif response.status_code == 404:
+                    logger.debug(f"Public bucket validation failed for {bucket_name}: 404 Not Found")
+                    return False
+            
+            if self.use_gcp_client:
+                try:
+                    bucket = self.storage_client.bucket(bucket_name)
+                    bucket.reload()
+                    return True
+                except NotFound:
+                    logger.debug(f"Bucket validation failed for {bucket_name}: NotFound")
+                    return False
+                except Forbidden:
+                    return self._verify_gcp_bucket_via_http(bucket_url)
+            else:
+                return self._verify_gcp_bucket_via_http(bucket_url)
+                    
+        except Exception as e:
+            logger.debug(f"GCP validation error for {bucket_name}: {e}")
+            return True
+            
+        return True
+
+    def _verify_gcp_bucket_via_http(self, bucket_url: str) -> bool:
+        try:
+            response = self.http_session.head(bucket_url, timeout=self.gcp_config.timeout)
+            if response.status_code in [200, 403]:
+                return True
+            elif response.status_code == 404:
+                return False
+            return True
+            
+        except Exception as e:
+            logger.debug(f"GCP HTTP verification failed: {e}")
+            return True
     def _get_bucket_contents(self, bucket, result: WorkerResult):
         try:
             objects = []

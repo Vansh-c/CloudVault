@@ -32,7 +32,10 @@ class RateLimiter:
         self.last_request_time = 0.0
         self.rate_limited_until = 0.0
         self.rate_limit_count = 0
+        self.consecutive_successes = 0
+        self.adaptive_backoff = 1.0
         self.lock = threading.Lock()
+
     def should_wait(self) -> Tuple[bool, float]:
         """
         Check if we should wait before making a request
@@ -41,38 +44,61 @@ class RateLimiter:
         """
         with self.lock:
             current_time = time.time()
+            
             if current_time < self.rate_limited_until:
                 wait_time = self.rate_limited_until - current_time
                 return True, wait_time
+            
             time_since_last = current_time - self.last_request_time
+            
+            adaptive_interval = self.min_interval * self.adaptive_backoff
+            
+            if time_since_last < adaptive_interval:
+                wait_time = adaptive_interval - time_since_last
+                return True, wait_time
             if time_since_last < self.min_interval:
                 wait_time = self.min_interval - time_since_last
                 return True, wait_time
             return False, 0.0
     def record_request(self):
+        """Record a successful request"""
         with self.lock:
             self.last_request_time = time.time()
+            self.consecutive_successes += 1
+            
+            if self.consecutive_successes >= 5:
+                self.adaptive_backoff = max(0.5, self.adaptive_backoff * 0.9)
+                self.consecutive_successes = 0
+
     def record_rate_limit(self, backoff_seconds: float = None):
         """
         Record that we hit a rate limit
         Args:
-            backoff_seconds: How long to back off, or None for auto-calculation
+            backoff_seconds: How long to wait before next request
         """
         with self.lock:
             self.rate_limit_count += 1
+            self.consecutive_successes = 0
+            
             if backoff_seconds is None:
-                base_delay = 2.0
-                backoff_seconds = min(base_delay * (1.5 ** self.rate_limit_count), 300)
+                base_backoff = min(60, 2 ** min(self.rate_limit_count, 6))
+                import random
+                jitter = random.uniform(0.8, 1.2)
+                backoff_seconds = base_backoff * jitter
+            
+            self.adaptive_backoff = min(3.0, self.adaptive_backoff * 1.5)
+            
             self.rate_limited_until = time.time() + backoff_seconds
-            if backoff_seconds > 5:
-                logger.warning(f"{self.provider.value} rate limited, backing off for {backoff_seconds:.1f} seconds")
-            else:
-                logger.debug(f"{self.provider.value} rate limited, backing off for {backoff_seconds:.1f} seconds")
+            logger.debug(f"Rate limited {self.provider.value} for {backoff_seconds:.2f}s "
+                        f"(count: {self.rate_limit_count}, adaptive: {self.adaptive_backoff:.2f})")
+
     def reset_rate_limit(self):
+        """Reset rate limiting state"""
         with self.lock:
-            if self.rate_limit_count > 0:
-                self.rate_limit_count = max(0, self.rate_limit_count - 1)
-                logger.info(f"{self.provider.value} rate limit status improved")
+            self.rate_limited_until = 0.0
+            self.rate_limit_count = max(0, self.rate_limit_count - 1)
+            self.adaptive_backoff = max(1.0, self.adaptive_backoff * 0.95)
+
 class BucketQueue:
     """
     Thread-safe queue manager for bucket discovery

@@ -115,6 +115,7 @@ class AzureBlobWorker(BaseWorker):
                 access_level=AccessLevel.PRIVATE,
                 bucket_url=container_url
             )
+            
             public_access = properties.get('public_access', 'none')
             if public_access == 'container':
                 result.access_level = AccessLevel.PUBLIC_READ
@@ -122,10 +123,22 @@ class AzureBlobWorker(BaseWorker):
                 result.access_level = AccessLevel.PUBLIC_READ
             else:
                 result.access_level = AccessLevel.PRIVATE
-            result.acl_info = {
-                'public_access': public_access,
-                'account_name': account_name
-            }
+            
+            result.acl_info = self._get_azure_container_info(properties, account_name, container_client)
+            
+            if result.acl_info and 'owner' in result.acl_info:
+                result.owner = result.acl_info['owner']
+            else:
+                result.owner = f"Azure-{account_name}"
+            
+            result.permission_analysis = self._enhance_azure_permission_analysis(result.acl_info, public_access)
+            
+            if not self._validate_azure_container_access(container_name, container_url, result.access_level):
+                logger.debug(f"Container {container_name} validation failed - marking as false positive")
+                result.found = False
+                result.error_message = "Validation failed - possible false positive"
+                return result
+            
             if result.is_public or not self.config.only_interesting:
                 try:
                     self._get_container_contents(container_client, result)
@@ -142,14 +155,24 @@ class AzureBlobWorker(BaseWorker):
             )
         except HttpResponseError as e:
             if e.status_code == 403:
-                return WorkerResult(
+                result = WorkerResult(
                     bucket_name=container_name,
                     provider="azure",
                     found=True,
                     access_level=AccessLevel.PRIVATE,
                     bucket_url=container_url,
+                    owner='(access denied)',
                     error_message="Access denied"
                 )
+                
+                try:
+                    http_owner = self._extract_azure_owner_from_http(container_url, account_name)
+                    if http_owner and http_owner != '(unknown)':
+                        result.owner = http_owner
+                except Exception as http_e:
+                    logger.debug(f"HTTP owner extraction failed for {container_name}: {http_e}")
+                
+                return result
             elif e.status_code == 429:
                 raise  # Re-raise rate limit errors
             else:
@@ -171,6 +194,115 @@ class AzureBlobWorker(BaseWorker):
                 bucket_url=container_url,
                 error_message=str(e)
             )
+
+    def _get_azure_container_info(self, properties, account_name: str, container_client) -> dict:
+        info = {
+            'public_access': properties.get('public_access', 'none'),
+            'account_name': account_name,
+            'owner': f"Azure-{account_name}",
+            'owner_type': 'storage_account',
+            'last_modified': properties.get('last_modified'),
+            'etag': properties.get('etag'),
+            'metadata': properties.get('metadata', {}),
+            'lease_status': properties.get('lease_status'),
+            'lease_state': properties.get('lease_state')
+        }
+        
+        metadata = properties.get('metadata', {})
+        if metadata:
+            owner_info = metadata.get('owner') or metadata.get('created_by') or metadata.get('department')
+            if owner_info:
+                info['owner'] = f"Azure-{account_name} ({owner_info})"
+        
+        return info
+
+    def _extract_azure_owner_from_http(self, container_url: str, account_name: str) -> str:
+        try:
+            response = self.http_session.head(container_url, timeout=self.azure_config.timeout)
+            
+            server_header = response.headers.get('Server', '')
+            if 'Windows-Azure-Blob' in server_header:
+                return f"Azure-{account_name}"
+            
+            account_header = response.headers.get('x-ms-account-name', '')
+            if account_header:
+                return f"Azure-{account_header}"
+            
+            return f"Azure-{account_name}"
+            
+        except Exception as e:
+            logger.debug(f"HTTP owner extraction failed: {e}")
+            return f"Azure-{account_name}"
+
+    def _enhance_azure_permission_analysis(self, acl_info: dict, public_access: str) -> dict:
+        analysis = {
+            'public_read': False,
+            'public_write': False,
+            'container_access': False,
+            'blob_access': False,
+            'owner_permissions': ['FULL_CONTROL'],
+            'risk_level': 'LOW',
+            'public_access_level': public_access
+        }
+        
+        if public_access == 'container':
+            analysis['public_read'] = True
+            analysis['container_access'] = True
+            analysis['risk_level'] = 'HIGH'
+        elif public_access == 'blob':
+            analysis['public_read'] = True
+            analysis['blob_access'] = True
+            analysis['risk_level'] = 'MEDIUM'
+        
+        if analysis['container_access']:
+            analysis['risk_level'] = 'HIGH'
+        
+        return analysis
+
+    def _validate_azure_container_access(self, container_name: str, container_url: str, access_level) -> bool:
+        """
+        Container'ın gerçekten erişilebilir olup olmadığını doğrular
+        False positive'leri azaltmak için kullanılır
+        """
+        try:
+            if hasattr(access_level, 'name') and 'PUBLIC' in access_level.name:
+                response = self.http_session.head(container_url, timeout=self.azure_config.timeout)
+                if response.status_code in [200, 403]:
+                    return True
+                elif response.status_code == 404:
+                    logger.debug(f"Public container validation failed for {container_name}: 404 Not Found")
+                    return False
+            
+            try:
+                container_client = self.blob_service_client.get_container_client(container_name)
+                container_client.get_container_properties()
+                return True
+            except ResourceNotFoundError:
+                logger.debug(f"Container validation failed for {container_name}: ResourceNotFoundError")
+                return False
+            except HttpResponseError as e:
+                if e.status_code == 403:
+                    return self._verify_azure_container_via_http(container_url)
+                return False
+                    
+        except Exception as e:
+            logger.debug(f"Azure validation error for {container_name}: {e}")
+            return True
+            
+        return True
+
+    def _verify_azure_container_via_http(self, container_url: str) -> bool:
+        try:
+            response = self.http_session.head(container_url, timeout=self.azure_config.timeout)
+            if response.status_code in [200, 403]:
+                return True
+            elif response.status_code == 404:
+                return False
+            return True
+            
+        except Exception as e:
+            logger.debug(f"Azure HTTP verification failed: {e}")
+            return True
     def _check_container_http(self, container_name: str, container_url: str, account_name: str, target) -> WorkerResult:
         try:
             response = self.http_session.head(

@@ -181,8 +181,34 @@ class CloudVaultDiscovery:
             color = "magenta"
         access_info = f"[{result.access_level.value.upper()}]"
         message = f"Found {result.provider.upper()} bucket: {result.bucket_url} {access_info}"
+        
         if result.owner:
             message += f" (Owner: {result.owner})"
+        
+        if hasattr(result, 'permission_analysis') and result.permission_analysis:
+            perm_analysis = result.permission_analysis
+            permissions = []
+            
+            if perm_analysis.get('public_read'):
+                permissions.append("PUBLIC_READ")
+            if perm_analysis.get('public_write'):
+                permissions.append("PUBLIC_WRITE")
+            if perm_analysis.get('authenticated_read'):
+                permissions.append("AUTH_READ")
+            if perm_analysis.get('authenticated_write'):
+                permissions.append("AUTH_WRITE")
+            if perm_analysis.get('public_read_acp'):
+                permissions.append("PUBLIC_READ_ACP")
+            if perm_analysis.get('public_write_acp'):
+                permissions.append("PUBLIC_WRITE_ACP")
+            
+            if permissions:
+                message += f" | Permissions: {', '.join(permissions)}"
+            
+            risk_level = perm_analysis.get('risk_level', 'LOW')
+            if risk_level in ['CRITICAL', 'HIGH']:
+                message += f" | Risk: {risk_level}"
+        
         if content_summary and content_summary != "No sensitive content detected":
             message += f" - Contains: {content_summary}"
         if vulnerabilities:
@@ -193,7 +219,7 @@ class CloudVaultDiscovery:
             elif high_count > 0:
                 message += f" ⚠️  {high_count} HIGH risk findings!"
         cprint(message, color, attrs=["bold"])
-        for vuln in vulnerabilities[:3]:  # Show first 3 vulnerabilities
+        for vuln in vulnerabilities[:3]:
             cprint(f"  └─ {vuln.severity}: {vuln.title} - {vuln.evidence}", 
                    "red" if vuln.severity == "CRITICAL" else "yellow")
         if self.config.log_to_file:
