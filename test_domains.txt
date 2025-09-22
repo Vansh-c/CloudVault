@@ -1,5 +1,0 @@
-example.com
-test.com
-demo.org
-sample.net
-github.com
