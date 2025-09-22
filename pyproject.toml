@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cloudvault4"
-version = "1.0.0"
+version = "1.0.1"
 authors = [
     {name = "ibrahimsql", email = "ibrahimsql@proton.me"},
 ]
@@ -126,13 +126,13 @@ line-length = 100
 target-version = ['py38']
 
 [tool.mypy]
-python_version = "3.8"
+python_version = "1.0.1"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
 
 [tool.pytest.ini_options]
-minversion = "7.0"
+minversion = "1.0.1"
 addopts = "-ra -q --strict-markers --cov=cloudvault_discovery"
 testpaths = ["tests"]
 markers = [
