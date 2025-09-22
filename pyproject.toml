@@ -3,10 +3,10 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "cloudvault"
+name = "cloudvault4"
 version = "1.0.0"
 authors = [
-    {name = "Ibrahim SQL", email = "ibrahim@example.com"},
+    {name = "ibrahimsql", email = "ibrahimsql@proton.me"},
 ]
 description = "Multi-cloud storage bucket discovery via certificate transparency monitoring"
 readme = "README.md"
