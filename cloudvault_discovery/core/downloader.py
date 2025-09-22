@@ -4,7 +4,11 @@ import zipfile
 import tarfile
 import io
 import hashlib
-import magic
+try:
+    import magic
+except ImportError:
+    # Fallback if libmagic is not available
+    magic = None
 import re
 import json
 import sqlite3
@@ -82,7 +86,22 @@ class BucketDownloader:
         if not content:
             return None
         file_hash = hashlib.md5(content).hexdigest()
-        file_type = magic.from_buffer(content, mime=True) if hasattr(magic, 'from_buffer') else 'unknown'
+        if magic and hasattr(magic, 'from_buffer'):
+            file_type = magic.from_buffer(content, mime=True)
+        else:
+            # Fallback file type detection based on filename
+            if filename.lower().endswith(('.txt', '.log')):
+                file_type = 'text/plain'
+            elif filename.lower().endswith(('.json',)):
+                file_type = 'application/json'
+            elif filename.lower().endswith(('.xml',)):
+                file_type = 'application/xml'
+            elif filename.lower().endswith(('.zip',)):
+                file_type = 'application/zip'
+            elif filename.lower().endswith(('.sql', '.db', '.sqlite')):
+                file_type = 'application/x-sqlite3'
+            else:
+                file_type = 'unknown'
         result = {
             'filename': filename,
             'url': url,

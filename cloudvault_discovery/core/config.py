@@ -4,7 +4,16 @@ Handles YAML configuration files, environment variables, and provider-specific s
 Provides validation and default values for all configuration options.
 """
 import os
-import yaml
+try:
+    import yaml
+except ImportError:
+    try:
+        import ruamel.yaml as yaml
+    except ImportError:
+        # Fallback to basic JSON if no YAML library available
+        import json as yaml
+        yaml.safe_load = yaml.loads
+        yaml.dump = json.dumps
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, field
