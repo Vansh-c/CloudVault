@@ -47,7 +47,7 @@ dependencies = [
     "psycopg2-binary>=2.9.0",
     "pymongo>=4.0.0",
     "mysql-connector-python>=8.0.0",
-    "python-slack-sdk>=3.19.0",
+    "slack-sdk>=3.19.0",
     "paramiko>=3.0.0",
     "pillow>=10.0.0",
     "pypdf2>=3.0.0",
@@ -79,7 +79,7 @@ exploit = [
     "psycopg2-binary>=2.9.0",
     "pymongo>=4.0.0",
     "mysql-connector-python>=8.0.0",
-    "python-slack-sdk>=3.19.0"
+    "slack-sdk>=3.19.0"
 ]
 full = [
     "boto3>=1.26.0", 
@@ -94,7 +94,7 @@ full = [
     "psycopg2-binary>=2.9.0",
     "pymongo>=4.0.0",
     "mysql-connector-python>=8.0.0",
-    "python-slack-sdk>=3.19.0"
+    "slack-sdk>=3.19.0"
 ]
 dev = [
     "pytest>=7.0.0",
