@@ -440,6 +440,8 @@ Examples:
                         help='Wordlist file for database brute-forcing')
     
     args = parser.parse_args()
+    
+    if args.init_config:
         if create_default_config():
             sys.exit(0)
         else:

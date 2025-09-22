@@ -108,7 +108,7 @@ class PermutationGenerator:
             return False
         if len(name) < 3 or len(name) > 63:
             return False
-        if not name.replace('-', ).isalnum():
+        if not name.replace('-', '').isalnum():
             return False
         if name.startswith(('-', '.', '_')) or name.endswith(('-', '.', '_')):
             return False
