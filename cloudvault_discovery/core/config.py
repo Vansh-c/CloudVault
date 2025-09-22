@@ -11,9 +11,20 @@ except ImportError:
         import ruamel.yaml as yaml
     except ImportError:
         # Fallback to basic JSON if no YAML library available
-        import json as yaml
-        yaml.safe_load = yaml.loads
-        yaml.dump = json.dumps
+        import json
+        class _YamlShim:
+            @staticmethod
+            def safe_load(stream):
+                if hasattr(stream, "read"):
+                    return json.loads(stream.read())
+                return json.loads(stream)
+            @staticmethod
+            def dump(data, stream=None, default_flow_style=False, indent=2, **kwargs):
+                text = json.dumps(data, indent=indent)
+                if stream is None:
+                    return text
+                stream.write(text)
+        yaml = _YamlShim()
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, field

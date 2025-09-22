@@ -294,7 +294,7 @@ class UpdateThread(Thread):
             return 'CRITICAL'
         elif access_level == AccessLevel.PUBLIC_READ:
             return 'HIGH'
-        elif access_level == AccessLevel.AUTHENTICATED:
+        elif access_level == AccessLevel.AUTHENTICATED_READ:
             return 'MEDIUM'
         else:
             return 'LOW'
