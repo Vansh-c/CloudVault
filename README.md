@@ -66,18 +66,18 @@ CloudVault is the most comprehensive **cloud storage security scanner** availabl
 
 ```bash
 # Install CloudVault - Complete S3 Bucket Scanner
-pip install cloudvault
+pip install cloudvault4
 
 # Full installation with all cloud providers (AWS S3, GCP, Azure)
-pip install cloudvault[all]
+pip install cloudvault4[all]
 
 # Provider-specific installations for targeted scanning
-pip install cloudvault[aws]      # AWS S3 bucket scanner only
-pip install cloudvault[gcp]      # Google Cloud Storage scanner only  
-pip install cloudvault[azure]    # Azure Blob Storage scanner only
+pip install cloudvault4[aws]      # AWS S3 bucket scanner only
+pip install cloudvault4[gcp]      # Google Cloud Storage scanner only  
+pip install cloudvault4[azure]    # Azure Blob Storage scanner only
 
 # Security researcher edition with all exploitation features
-pip install cloudvault[full]
+pip install cloudvault4[full]
 ```
 
 ### 🎧 Basic S3 Bucket Scanning Usage
