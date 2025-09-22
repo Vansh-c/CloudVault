@@ -1,0 +1,51 @@
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="cloudGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="vaultGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f093fb;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#f5576c;stop-opacity:1" />
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge> 
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Background Circle -->
+  <circle cx="100" cy="100" r="95" fill="url(#cloudGradient)" stroke="#ffffff" stroke-width="3"/>
+  
+  <!-- Cloud Shape -->
+  <path d="M60 80 C60 70, 70 65, 80 65 C85 60, 95 60, 100 65 C110 60, 120 65, 125 70 C135 70, 140 75, 140 85 C140 95, 135 100, 125 100 L70 100 C60 100, 60 90, 60 80 Z" fill="rgba(255,255,255,0.9)" filter="url(#glow)"/>
+  
+  <!-- Vault/Lock Icon -->
+  <rect x="85" y="110" width="30" height="35" rx="3" fill="url(#vaultGradient)" stroke="#ffffff" stroke-width="2"/>
+  
+  <!-- Lock Shackle -->
+  <path d="M90 110 L90 105 C90 95, 110 95, 110 105 L110 110" stroke="url(#vaultGradient)" stroke-width="3" fill="none"/>
+  
+  <!-- Lock Keyhole -->
+  <circle cx="100" cy="125" r="3" fill="#ffffff"/>
+  <rect x="99" y="125" width="2" height="8" fill="#ffffff"/>
+  
+  <!-- Security Icons -->
+  <circle cx="70" cy="130" r="8" fill="rgba(102,126,234,0.3)" stroke="#667eea" stroke-width="2"/>
+  <path d="M67 130 L69 132 L73 128" stroke="#667eea" stroke-width="2" fill="none"/>
+  
+  <circle cx="130" cy="130" r="8" fill="rgba(102,126,234,0.3)" stroke="#667eea" stroke-width="2"/>
+  <path d="M127 127 L133 133 M133 127 L127 133" stroke="#f5576c" stroke-width="2"/>
+  
+  <!-- Data Flow Lines -->
+  <path d="M50 100 Q75 120 100 100 T150 100" stroke="rgba(255,255,255,0.6)" stroke-width="2" fill="none" stroke-dasharray="5,5">
+    <animate attributeName="stroke-dashoffset" values="0;10" dur="2s" repeatCount="indefinite"/>
+  </path>
+  
+  <!-- Company Text -->
+  <text x="100" y="170" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#ffffff">CloudVault</text>
+  <text x="100" y="185" font-family="Arial, sans-serif" font-size="10" text-anchor="middle" fill="rgba(255,255,255,0.8)">DISCOVERY</text>
+</svg>

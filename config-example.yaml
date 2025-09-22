@@ -1,0 +1,34 @@
+aws:
+  access_key: null
+  enabled: true
+  max_threads: 20
+  rate_limit_sleep: 1.0
+  region: us-east-1
+  secret_key: null
+  timeout: 10
+azure:
+  account_key: null
+  account_name: null
+  connection_string: null
+  enabled: true
+  max_threads: 15
+  rate_limit_sleep: 1.0
+  timeout: 10
+cert_stream_url: wss://certstream.calidog.io
+gcp:
+  enabled: true
+  max_threads: 15
+  project_id: null
+  rate_limit_sleep: 1.0
+  service_account_path: null
+  timeout: 10
+keywords_file: keywords.txt
+log_file: buckets.log
+log_level: INFO
+log_to_file: false
+only_interesting: false
+permutation_file: permutations/default.txt
+queue_size: 100
+skip_lets_encrypt: false
+slack_webhook: null
+update_interval: 30

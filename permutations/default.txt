@@ -1,0 +1,11 @@
+{domain}-backup
+backup-{domain}
+{domain}-dev
+dev-{domain}
+{domain}-staging
+staging-{domain}
+{domain}-test
+test-{domain}
+{domain}-prod
+prod-{domain}
+{domain}-uat
